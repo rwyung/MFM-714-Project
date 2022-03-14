@@ -1,5 +1,5 @@
 
-from msilib.schema import InstallUISequence
+
 import numpy as np
 import pandas as pd
 from scipy.linalg import cholesky
@@ -29,7 +29,7 @@ Cor_Matrix= np.where(Cor_Matrix == 0,0.36,Cor_Matrix)
 Chol_L = cholesky(Cor_Matrix)
 
 
-### Part 2 code here
+### Part 2 of PART 1 code here
 def market_val_port(port):
     l = port.Price * port.Notional /100
     l.columns = ["Name","Portfolio Value"]
@@ -90,7 +90,7 @@ def routine_price(portfolio,yc):
 
 
     def makehams_formula(coup, rate, time_remaining, freq, Notional):
-        ye = np.floor(time_remaining)
+        ye = np.floor(time_remaining) 
         adj = time_remaining - ye
         t2 = ye.copy()
         print(adj)
@@ -110,23 +110,17 @@ def routine_price(portfolio,yc):
             else:
                 k = 0
             return(k)
-        
-
         t1 = adj.copy()
-
         adjust = adj.apply(lambda x: check_adj(x)) 
         time_to_maturity = ye + t1.apply(lambda x: check_adj_2(x))
-        
 
         # D is the discounting factor
         D = (1/(1+ rate/freq)**(freq*time_to_maturity))
         # P is the Clean price of the bond at the specific 
-
-        
-        Dirty = coup/rate * Notional *(1 - D)  + Notional * D
+        Dirty = (coup/rate * Notional *(1 - D)  + Notional * D)
         # Dirty_price represents the Dirty Price of the bond
         P = Dirty * (1 + rate/2)**adjust  -   Notional*coup*adjust
-        return(P, Dirty) 
+        return(pd.from_dict({"Clean Price":P,"Dirty: Price" : Dirty },dtype= np.float64)) 
     
     # time_1 = now_w + timedelta(365.25)
     def CDS_pricer(status,Instrument,recovery,Notional):
@@ -135,26 +129,51 @@ def routine_price(portfolio,yc):
                 return(Notional * recovery)
             else:
                 return(0)
+    
+    
 
-
+#df.loc[df['set_of_numbers'] <= 4, 'equal_or_lower_than_4?'] = 'True' 
+#df.loc[df['set_of_numbers'] > 4, 'equal_or_lower_than_4?'] = 'False'
             
+
     def run_pricer(port):
     # TODO create a condition for CDSs and one for Bonds
-        pass 
-            
+    # I've created a column denoting CDS's
+        #port.loc[df["Instrument type (Bond or CDS)"] == "Bond", 'Instrument Price'] 
+        #port = price_CDS(port)
+        #port = price_bonds(port)
+        #return(port)
+        pass
 
+    
     # def one_step(port, rating):
     col_names = yc.columns
     col_names.remove("government","In years")
     ret = portfolio.copy()
+
+    ret["status"]= ret["Instrument type (Bond or CDS)"].apply(lambda x: 1 if x == "Bond" else 0 )
     ret["Years_Remaining"] =  ret["Maturity_Date"].apply(lambda x: (relativedelta(x,now_w).years +relativedelta(x,now_w).months/12)) - 1
     result = pd.DataFrame(columns=col_names)
+    
+    df =  yc.copy()
+    for i in ret["Years_Remaining"]:
+        if i not in yc.index:
+            df.loc[i] = np.nan
+   
+    df = df.interpolate(method="linear",axis=0) #new yc
+    # Interporlate each rate. linear
+        
+    
+    
+    
+        
+    
     #ret["Instrument"] = ret["Instrument type (Bond or CDS)"].apply(lambda x: 1 if x  == "Bond")
     #TODO check if "In years" contains else interperolate
     for i in col_names: 
         r = yc.loc()
         result[i] = makehams_formula(result.Coupon, )
-    pass
+    
     
 
 
