@@ -17,6 +17,7 @@ import math
 # days_per_year = 365.24
 # hundred_years_later = my_object.date + datetime.timedelta(days=(years*days_per_year))
 ### TODO Upload the data
+
 issuers =  pd.read_excel("data/Issuers_for_project_2022.xls",index_col=0)
 portfolio = pd.read_excel("data/Portfolio_for_project_2022.xls",index_col=0)
 transition = pd.read_csv("data/transition TBD.csv")
@@ -152,7 +153,8 @@ def routine_price(portfolio,yc):
     ret = portfolio.copy()
 
     ret["status"]= ret["Instrument type (Bond or CDS)"].apply(lambda x: 1 if x == "Bond" else 0 )
-    ret["Years_Remaining"] =  ret["Maturity_Date"].apply(lambda x: (relativedelta(x,now_w).years +relativedelta(x,now_w).months/12)) - 1
+    ret["Years_Remaining"] =  ret["Maturity_Date"].apply(lambda x: (relativedelta(x,now_w).years +(relativedelta(x,now_w).months/12))) - 1
+    ret["Years_remaining"] = np.where(ret["Years Remaining"] <= 0, ret["Years Remaining"] + 1, ret["Years Remaining"])
     result = pd.DataFrame(columns=col_names)
     
     df =  yc.copy()
@@ -160,19 +162,18 @@ def routine_price(portfolio,yc):
         if i not in yc.index:
             df.loc[i] = np.nan
    
-    df = df.interpolate(method="linear",axis=0) #new yc
+    df.sort_index(axis= 0,inplace = True)
+    df = df.interpolate(method="linear",axis=0) #new yc with times in between time to maturities.
+    df.fillna(axis= 0, method="bfill", inplace = True) 
+    # back fills rates for short term rates
+    df = df[df.index.notnull()] # removes na indexes
+    
+    
     # Interporlate each rate. linear
-        
-    
-    
-    
-        
     
     #ret["Instrument"] = ret["Instrument type (Bond or CDS)"].apply(lambda x: 1 if x  == "Bond")
     #TODO check if "In years" contains else interperolate
-    for i in col_names: 
-        r = yc.loc()
-        result[i] = makehams_formula(result.Coupon, )
+   
     
     
 
