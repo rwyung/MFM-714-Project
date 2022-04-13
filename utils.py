@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy.linalg import cholesky
+from scipy.stats import norm
 from math import exp
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
@@ -22,17 +23,17 @@ def upload_data(data_url="./data"):
     rate = os.path.join(data_url,"Issuers_for_project_2022.xls")
     port = os.path.join(data_url,"Portfolio_for_project_2022.xls")
     yc = os.path.join(data_url,"Yield curve for project 2022.xlsx")
-    trans = os.path.join(data_url, "Transition Matrix.xlsx")
+    trans = os.path.join(data_url, "transition 2022.csv")
     
-    # Read in data
+    # Read in dataf
     ratings = pd.read_excel(rate)
     portfolio =   pd.read_excel(port, index_col=0)
     yield_curve = pd.read_excel(yc,index_col=1,skiprows=[0], header= [1])
-    transition =  pd.read_excel(trans,index_col=0, skiprows=[0])
+    transition =  pd.read_csv(trans,index_col=0)
 
     return( ratings, portfolio, yield_curve, transition)
 
-def Correlation_Matrix(port):
+def Correlation_Matrix(ratings,port):
     """
     Correlation_Matrix consume  a pd.DataFrame of portfolio positions
     and returns the associated correaltion matrix for each instrument
@@ -42,10 +43,28 @@ def Correlation_Matrix(port):
     At the  moment correaltion matrix is filled on the diagnonal with 1s and
     0.36 The code will be changed at a later date
     """
+    Comp_ = pd.unique(port.index)
+    #print(Comp_)
+    n_assets = len(Comp_) 
+    
+    Cor_Matrix = np.diag([1 for i in range(n_assets)])
+    
+    Cor_matrix_pd =  pd.DataFrame(Cor_Matrix, index = Comp_, columns=Comp_)
+    # Slow Method 
+    for comp1 in Cor_matrix_pd.index:
+        correlation = 0
+        for comp2 in Cor_matrix_pd.columns:
+            if comp1 == comp2:
+                correlation = 1 
+            elif ratings.loc[comp1, "Industry"] == ratings.loc[comp2, "Industry"]:
+                correlation = 0.65
+            else: 
+                correlation = 0.28
+            Cor_matrix_pd.loc[comp1,comp2] = correlation
+    
+    
+    return(Cor_matrix_pd)
 
-    Cor_Matrix = np.diag([1 for i in range(port.shape[0])])
-    Cor_Matrix = np.where(Cor_Matrix == 0,0.36, Cor_Matrix)
-    return(Cor_Matrix)
 
 def mkt_value(port):
     """
@@ -229,3 +248,201 @@ def change_TM(matrix):
     matrix = matrix[["AAA", "AA", "A", "BBB", "BB", "B", "CCC/C", "Def"]] + adjustment
     return(matrix)
     
+
+### Step 2 Find points above spread.
+def yc_spread(yc):
+    """
+    ~~~~~ PURPOSE ~~~~~
+        yc_spread consumes a yield curve pd.DataFrame 'yc' 
+        and returns the spread with respect to the Govt Yield
+    ~~~~~ MAP ~~~~~~~~~    
+        yc_spread: pd.DataFrame -> pd.DataFrame 
+    """
+    # print(yc.loc[:, yc.columns != 'Government'])
+    #print(yc.loc[:,yc.columns != "Government"])
+    Wo_Gov =  yc.loc[:, yc.columns != "Government"]
+    Wo_Gov_1 = Wo_Gov.loc[:, Wo_Gov.columns != "Tenor"]
+    output = Wo_Gov_1 - np.array(yc.loc[:, yc.columns == "Government"])
+    return(output)
+
+
+def p_above_spread(ratings, yc, port):
+    
+    """
+    ~~~~~~~~ Purpose ~~~~~~~~
+    p_above_spread consumes a pd.DataFrame 'ratings' representing the ratings  and pd.DataFrame 'yc'representing the yield curve
+    and returns a pd.Dataframe with all the companies and respective spreads, and idiosyncratic bps above rating spread.
+    ~~~~~~~~ Function ~~~~~~~
+    p_above_spread:  pd.DataFrame, pd.DataFrame =>  pd.DataFrame
+    
+    """
+
+    
+    
+    # TODO Step 1 is join tables with respective yield and year.  Should include table with just the year to maturity and subtract gov yields
+    #       Step 2 Find the spread of the rating with respect to government yields 
+    #       Step 3 Find the difference between spreads and viola you have idiosyncratic spread adding factors 
+    
+    
+    ########## Step 1 ###########
+    ### Key steps 
+    ### Define the price of the bond and find yield that it is currently trading for.
+    ### Take the yield found and subtract by governent yield to find bond spread .
+    ### Not in particular order, find the spread with respect to the yield of the rating of the bond with respect to  Gov.t
+    
+    
+    pass
+
+
+
+def time_maturity(portfolio,start_date = date(2021,1,1)):
+    """
+        time_maturity consumes a pd.DataFrame representing the portfolio and a datetime object called 'start_date'
+        and returns a portfolio pd.DataFrame with 'T2M' column representing the "Time to Maturity"
+
+        time_maturity: pd.DataFrame, datetime.date -> pd.DataFrame
+    """
+
+    portfolio["T2M"] = portfolio["Maturity Date"].apply(lambda x: (relativedelta(x,start_date).years +(relativedelta(x,start_date).months/12)))
+    portfolio["T2M"] = np.where(portfolio["T2M"] <= 0, portfolio["T2M"] + 1, portfolio["T2M"]) # checks for negative dates,  and adds a year.
+    return(portfolio)
+
+    
+
+def makehams_formula(coup, rate, time_remaining, freq, Notional):
+    ye = np.floor(time_remaining) 
+    adj = time_remaining - ye
+    t2 = ye.copy()
+    # print(adj)
+    ## TODO adjust adj  such that we only need to consider the period after coupon.
+    def check_adj(adj):
+        if adj > 0.5:
+            #time_to_maturity = ye + 0.5 
+            adj  = (adj- 0.5)/0.5
+        else:
+            
+            adj = adj / 0.5
+        return(adj)
+    def check_adj_2(adj):
+        if adj > 0.5:
+            #time_to_maturity = ye + 0.5 
+            k =  0.5
+        else:
+            k = 0
+        return(k)
+    t1 = adj.copy()
+    adjust = adj.apply(lambda x: check_adj(x)) 
+    time_to_maturity = ye + t1.apply(lambda x: check_adj_2(x))
+
+    # D is the discounting factor
+    D = (1/(1+ rate/freq)**(freq*time_to_maturity))
+    # P is the Clean price of the bond at the specific 
+    Dirty = (coup/rate * Notional *(1 - D)  + Notional * D)
+    # Dirty_price represents the Dirty Price of the bond
+    P = Dirty * (1 + rate/2)**adjust  -   Notional*coup*adjust
+    #return(pd.from_dict({"Clean Price":P,"Dirty: Price" : Dirty },dtype= np.float64)) 
+    return(P)
+
+def CDS_pricer(status,Instrument,recovery,Notional):
+    if Instrument == "CDS":
+        if  status == "Default":
+            return(Notional * recovery)
+        else:
+            return(0)
+
+def  lookup_yield_curve(port,ref):
+    port["Grade rate"] = ref.lookup(port["T2M"], port["Issuer Rating"])
+    
+def adjust_yield_curve(port,yc):
+    col_names = yc.columns 
+    col_names.remove("government","In years")
+    ret = port.copy()
+    time_now = date(2021,1,1)
+    #ret["status"]= ret["Instrument type (Bond or CDS)"].apply(lambda x: 1 if x == "Bond" else 0 )
+    # ret["Years_Remaining"] =  ret["Maturity_Date"].apply(lambda x: (relativedelta(x,now_w).years +(relativedelta(x,now_w).months/12))) - 1
+    # ret["Years_remaining"] = np.wherse(ret["Years Remaining"] <= 0, ret["Years Remaining"] + 1, ret["Years Remaining"])
+    ret = time_maturity(ret, time_now)
+    
+    #result = pd.DataFrame(columns=col_names)
+    
+    ### Adjusts yield _cur
+    df =  yc.copy()
+    for i in ret["T2M"]:
+        if i not in yc.index:
+            df.loc[i] = np.nan
+   
+    df.sort_index(axis= 0,inplace = True)
+    df = df.interpolate(method="linear",axis=0) #new yc with times in between time to maturities.
+    df.fillna(axis= 0, method="bfill", inplace = True) 
+    # back fills rates for short term rates
+    df = df[df.index.notnull()] # removes na indexes
+    return(df)
+
+def CDS_Price(coup, spread,t2m,ye,freq):
+    D = (1/(1+ ye/freq)**(freq*t2m))
+    result = (coup - spread )/ ye *  (1-D)
+    return(result)
+
+
+
+
+def CDS_Price(N, coup, spread,t2m,ye,freq):
+    D = (1/(1+ ye/freq)**(freq*t2m))
+    result =  N *  (spread - coup )/ ye *  (1-D)
+    return(result)
+def beta_recovery(ratings,alpha=1.62, beta=1.86):
+    num_of_companies = ratings.shape[0]
+    recoveries=np.random.beta(alpha,beta, (num_of_companies, 1))
+    ratings["Recovery"] = recoveries
+    return(ratings)
+
+# I want to split the data to two different portfolios 
+
+def one_year_forward(port,transition,yc):
+    # Comment you want to use the yc for one year later: We will get new years 
+    comp_uniq = np.unique(port.index)
+    grades = np.unique(transition.columns)
+    result = pd.DataFrame(index = comp_uniq,columns= grades)
+    temp = port.copy()
+    #TODO LOOKUP Table and return rates add the idiosyncratic adjustment and bam.
+    # First we must reduce  the T2M by one year
+    temp["T2M_1yr"] = temp["T2M"] - 1 
+    # If maturities after 1 year are less than 0 set to 1
+    temp["T2M_1yr"] = np.where(temp["T2M_1yr"] <0 , 1 , temp["T2M_1yr"])
+    #temp2["Grade rate"] = temp.lookup(temp2["T2M"], temp2["Issuer Rating"]
+        # temp_grades  = grades.tolist()
+    # temp_grades.remove("D") # remove default from considerations
+    desired_col = ["Unique_id", "Instrument type (Bond or CDS)", "T2M_1yr","Coupon","ISpread", "Coupons per year",
+     "Notional","Recovery", "Yield"]
+    
+    grades_list = grades.tolist()
+    #grades_list.remove("D")
+
+    result = temp[desired_col]
+    result.reset_index(inplace=True)
+    temp_v  = pd.DataFrame({"New Ratings": grades_list})
+    result_f = pd.merge(result, temp_v, how="cross")
+    result_f.set_index("Name", inplace=True)
+    yc["D"] = 0.5
+    result_f["Sim Yields"] = yc.lookup(result_f["T2M_1yr"], result_f["New Ratings"])
+    result_f["New Yields"]  = (result_f["ISpread"].values + result_f["Sim Yields"].T).T
+    
+    
+    result_f["Sim Prices"] = np.where(result_f["Instrument type (Bond or CDS)"] == "Bond", utils.makehams_formula(
+        result_f.Coupon, result_f["New Yields"], result_f["T2M_1yr"],result_f["Coupons per year"],result_f["Notional"]
+    ), CDS_Price(result_f["Notional"],result_f["Coupon"],result_f["New Yields"],result_f["T2M_1yr"],result_f["New Yields"],result_f["Coupons per year"]))
+    Step3 = result_f.copy()
+    Step3["Sim Prices"] = np.where((Step3["New Ratings"] == "D") & (Step3["Instrument type (Bond or CDS)"] == "Bond"), calculate_recovery(Step3["Recovery"], Step3["Notional"]), Step3["Sim Prices"])
+    Step3["Sim Prices"] =  np.where((Step3["New Ratings"] == "D") & (Step3["Instrument type (Bond or CDS)"] == "CDS"), calculate_recovery(1-Step3["Recovery"], Step3["Notional"]),Step3["Sim Prices"])
+
+
+    #Step3[(Step3["New Ratings"] == "D") & (Step3["Instrument type (Bond or CDS)"] == "Bond")]["Sim Prices"] = calculate_recovery(Step3["Recovery"], Step3["Notional"] )    
+    #Step3[(Step3["New Ratings"] == "D") & (Step3["Instrument type (Bond or CDS)"] == "Bond")]["Sim Prices"] = calculate_recovery((1-Step3["Recovery"]), Step3["Notional"] )
+    
+    return(Step3)
+
+def look_for_rating(x, cdftrans, initial_rating):
+    d= cdftrans.loc[[initial_rating]]
+    look = d.T
+    rating=look[look[initial_rating].le(x)].index[-1]
+    return(rating)
